@@ -2,17 +2,17 @@
 
 set -eo
 
-if [ "${S3_BUCKET}" = "**None**" ]; then
+if [ -z "${S3_BUCKET}" ]; then
   echo "You need to set the S3_BUCKET environment variable."
   exit 1
 fi
 
-if [ "${POSTGRES_DATABASE}" = "**None**" ]; then
+if [ -z "${POSTGRES_DATABASE}" ]; then
   echo "You need to set the POSTGRES_DATABASE environment variable."
   exit 1
 fi
 
-if [ "${POSTGRES_HOST}" = "**None**" ]; then
+if [ -z "${POSTGRES_HOST}" ]; then
   if [ -n "${POSTGRES_PORT_5432_TCP_ADDR}" ]; then
     POSTGRES_HOST=$POSTGRES_PORT_5432_TCP_ADDR
     POSTGRES_PORT=$POSTGRES_PORT_5432_TCP_PORT
@@ -22,12 +22,12 @@ if [ "${POSTGRES_HOST}" = "**None**" ]; then
   fi
 fi
 
-if [ "${POSTGRES_USER}" = "**None**" ]; then
+if [ -z "${POSTGRES_USER}" ]; then
   echo "You need to set the POSTGRES_USER environment variable."
   exit 1
 fi
 
-if [ "${POSTGRES_PASSWORD}" = "**None**" ]; then
+if [ -z "${POSTGRES_PASSWORD}" ]; then
   echo "You need to set the POSTGRES_PASSWORD environment variable or link to a container named POSTGRES."
   exit 1
 fi

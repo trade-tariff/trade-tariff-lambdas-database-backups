@@ -17,19 +17,19 @@ filter-main: &filter-main
 
 orbs:
   serverless-framework: circleci/serverless-framework@2.0.1
-  tariff: trade-tariff/trade-tariff-ci-orb@0
   aws-cli: circleci/aws-cli@4.1.1
 
 executors:
   default:
     docker:
       - image: cimg/node:lts
+    resource_class: small
 
 jobs:
   build:
     executor: default
     parameters:
-      stage:
+      environment:
         type: string
     steps:
       - checkout
@@ -38,15 +38,8 @@ jobs:
           docker_layer_caching: false
       - aws-cli/install
       - run:
-          name: "Push image to ECR"
-          command: |
-            docker build -t tariff-database-backups-<< parameters.stage >> .
-
-            aws ecr get-login-password --region ${AWS_DEFAULT_REGION} |
-              docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
-
-            docker tag tariff-database-backups-<< parameters.stage >>:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/tariff-database-backups-<< parameters.stage >>:latest
-            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/tariff-database-backups-<< parameters.stage >>:latest
+          name: "Build and Push to ECR"
+          command: ./.circleci/ecr.sh "/<< parameters.environment >>/DATABASE_BACKUPS_ECR_URL"
 
   deploy:
     executor: default
@@ -67,7 +60,28 @@ workflows:
 
   deploy-to-development:
     jobs:
+      - build:
+          context: trade-tariff-terraform-aws-development
+          environment: development
+          <<: *filter-not-main
+
       - deploy:
           stage: development
-          context: trade-tariff-lambda-deployments-development
+          context: trade-tariff-database-backups-development
           <<: *filter-not-main
+          requires:
+            - build
+
+  deploy-to-staging:
+    jobs:
+      - deploy:
+          stage: staging
+          context: trade-tariff-database-backups-staging
+          <<: *filter-main
+
+  deploy-to-production:
+    jobs:
+      - deploy:
+          stage: production
+          context: trade-tariff-database-backups-production
+          <<: *filter-main

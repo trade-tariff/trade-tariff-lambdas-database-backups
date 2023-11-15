@@ -1,21 +1,24 @@
 ARG FUNCTION_DIR="/home/app/"
 ARG RUNTIME_VERSION="3.9"
-ARG DISTRO_VERSION="3.12"
+ARG DISTRO_VERSION="3.16"
 
 FROM python:${RUNTIME_VERSION}-alpine${DISTRO_VERSION} AS python-alpine
 RUN apk add --no-cache \
-    libstdc++
+    curl               \
+    libcurl            \
+    libstdc++          \
+    postgresql13
 
 FROM python-alpine AS build-image
 RUN apk add --no-cache \
-    build-base         \
-    libtool            \
     autoconf           \
     automake           \
-    libexecinfo-dev    \
-    make               \
+    build-base         \
     cmake              \
-    libcurl
+    libcurl            \
+    libexecinfo-dev    \
+    libtool            \
+    make
 
 ARG FUNCTION_DIR
 ARG RUNTIME_VERSION
@@ -32,17 +35,15 @@ COPY --from=build-image ${FUNCTION_DIR} ${FUNCTION_DIR}
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie /usr/bin/aws-lambda-rie
 RUN chmod 755 /usr/bin/aws-lambda-rie
 
+ENV ENVIRONMENT ''
 ENV POSTGRES_DATABASE ''
 ENV POSTGRES_HOST ''
-ENV POSTGRES_PORT 5432
-ENV POSTGRES_USER ''
 ENV POSTGRES_PASSWORD ''
-ENV POSTGRES_EXTRA_OPTS ''
+ENV POSTGRES_USER ''
 ENV S3_BUCKET ''
-ENV S3_PATH 'auto-backups'
 ENV S3_S3V4 no
 
-RUN apk add --no-cache postgresql && python3 -m pip install --no-cache-dir awscli==1.29.85
+RUN python3 -m pip install --no-cache-dir awscli==1.29.85
 
 COPY entry.sh ${FUNCTION_DIR}
 RUN chmod 755 ${FUNCTION_DIR}/entry.sh

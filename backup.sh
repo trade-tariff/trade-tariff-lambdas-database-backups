@@ -38,6 +38,6 @@ POSTGRES_HOST_OPTS="-h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER $POSTG
 
 pg_dump "$POSTGRES_HOST_OPTS" "$POSTGRES_DATABASE" |
   gzip |
-  aws s3 cp - "s3://$S3_BUCKET/$S3_PREFIX/${POSTGRES_DATABASE}_$(date +%Y-%m-%dT%H:%M:%SZ).sql.gz" || exit 2
+  aws s3 cp - "s3://$S3_BUCKET/${POSTGRES_DATABASE}_$(date +%Y-%m-%dT%H:%M:%SZ).sql.gz" || exit 2
 
 echo "SQL backup uploaded successfully" && exit 0

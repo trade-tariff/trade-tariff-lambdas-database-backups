@@ -1,0 +1,65 @@
+frameworkVersion: "3"
+service: database-backups
+
+plugins:
+  - serverless-vpc-discovery
+  - serverless-plugin-utils
+
+vpcDiscovery:
+  vpcName: "trade-tariff-${sls:stage}-vpc"
+  subnets:
+    - tagKey: "Name"
+      tagValues:
+        - "*private*"
+  securityGroups:
+    - names:
+        - "trade-tariff-be-rd-${sls:stage}"
+
+provider:
+  name: aws
+  region: eu-west-2
+  stage: ${env:STAGE}
+
+  ecr:
+    images:
+      database-backups:
+        uri: "${aws:accountId}.dkr.ecr.${self:provider.region}.amazonaws.com/tariff-database-backups-development:latest"
+
+  environment:
+    S3_BUCKET: "trade-tariff-database-backups-${aws:accountId}"
+    POSTGRES_DATABASE: "TradeTariffPostgres${capitalize(${sls:stage})}"
+    POSTGRES_HOST: ${env:POSTGRES_HOST}
+    POSTGRES_USER: ${env:POSTGRES_USER}
+    POSTGRES_PASSWORD: ${env:POSTGRES_PASSWORD}
+
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - s3:DeleteObject
+        - s3:GetObject
+        - s3:ListBucket
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::${env:S3_BUCKET}"
+        - "arn:aws:s3:::${env:S3_BUCKET}/*"
+
+    - Effect: "Allow"
+      Action:
+        - kms:Decrypt
+        - kms:GenerateDataKey
+      Resource:
+        - "arn:aws:kms:${self:provider.region}:${aws:accountId}:key/*"
+
+    - Effect: "Allow"
+      Action:
+        - ec2:CreateNetworkInterface
+        - ec2:DescribeNetworkInterfaces
+        - ec2:DeleteNetworkInterface
+      Resource:
+        - "*"
+
+functions:
+  backup:
+    image: database-backups
+    events:
+      - schedule: cron(0 12 * * ? *) # Run every day at 1200 UTC

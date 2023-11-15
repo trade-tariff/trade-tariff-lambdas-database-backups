@@ -1,0 +1,73 @@
+version: 2.1
+
+filter-not-main: &filter-not-main
+  filters:
+    branches:
+      ignore:
+        - main
+        - /^dependabot/(?!docker/).*/
+        - /^hotfix\/.+/
+
+filter-main: &filter-main
+  filters:
+    branches:
+      only:
+        - main
+        - /^hotfix\/.+/
+
+orbs:
+  serverless-framework: circleci/serverless-framework@2.0.1
+  tariff: trade-tariff/trade-tariff-ci-orb@0
+  aws-cli: circleci/aws-cli@4.1.1
+
+executors:
+  default:
+    docker:
+      - image: cimg/node:lts
+
+jobs:
+  build:
+    executor: default
+    parameters:
+      stage:
+        type: string
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.11
+          docker_layer_caching: false
+      - aws-cli/install
+      - run:
+          name: "Push image to ECR"
+          command: |
+            docker build -t tariff-database-backups-<< parameters.stage >> .
+
+            aws ecr get-login-password --region ${AWS_DEFAULT_REGION} |
+              docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+
+            docker tag tariff-database-backups-<< parameters.stage >>:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/tariff-database-backups-<< parameters.stage >>:latest
+            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/tariff-database-backups-<< parameters.stage >>:latest
+
+  deploy:
+    executor: default
+    parameters:
+      stage:
+        type: string
+    steps:
+      - checkout
+      - serverless-framework/setup
+      - run: yarn
+      - run:
+          name: "Deploy Serverless"
+          command: |
+            STAGE=<< parameters.stage >> serverless deploy --verbose
+
+workflows:
+  version: 2
+
+  deploy-to-development:
+    jobs:
+      - deploy:
+          stage: development
+          context: trade-tariff-lambda-deployments-development
+          <<: *filter-not-main

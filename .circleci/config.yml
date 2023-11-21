@@ -66,6 +66,7 @@ workflows:
           <<: *filter-not-main
 
       - deploy:
+          name: deploy-development
           stage: development
           context: trade-tariff-database-backups-development
           <<: *filter-not-main
@@ -75,6 +76,7 @@ workflows:
   deploy-to-staging:
     jobs:
       - deploy:
+          name: deploy-staging
           stage: staging
           context: trade-tariff-database-backups-staging
           <<: *filter-main
@@ -82,6 +84,7 @@ workflows:
   deploy-to-production:
     jobs:
       - deploy:
+          name: deploy-production
           stage: production
           context: trade-tariff-database-backups-production
           <<: *filter-main

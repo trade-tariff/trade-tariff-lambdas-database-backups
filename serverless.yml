@@ -9,7 +9,10 @@ provider:
   name: aws
   region: eu-west-2
   stage: ${env:STAGE}
-  timeout: 300
+  timeout: 600
+
+  deploymentBucket:
+    name: "trade-tariff-lambda-deployment-${aws:accountId}"
 
   ecr:
     images:

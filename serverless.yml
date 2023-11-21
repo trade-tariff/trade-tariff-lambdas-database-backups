@@ -5,32 +5,27 @@ plugins:
   - serverless-vpc-discovery
   - serverless-plugin-utils
 
-vpcDiscovery:
-  vpcName: "trade-tariff-${sls:stage}-vpc"
-  subnets:
-    - tagKey: "Name"
-      tagValues:
-        - "*private*"
-  securityGroups:
-    - names:
-        - "trade-tariff-be-rd-${sls:stage}"
-
 provider:
   name: aws
   region: eu-west-2
   stage: ${env:STAGE}
+  timeout: 600
+
+  deploymentBucket:
+    name: "trade-tariff-lambda-deployment-${aws:accountId}"
 
   ecr:
     images:
       database-backups:
-        uri: "${aws:accountId}.dkr.ecr.${self:provider.region}.amazonaws.com/tariff-database-backups-development:latest"
+        uri: "${ssm:/${sls:stage}/DATABASE_BACKUPS_ECR_URL}:latest"
 
   environment:
-    S3_BUCKET: "trade-tariff-database-backups-${aws:accountId}"
+    ENVIRONMENT: ${sls:stage}
     POSTGRES_DATABASE: "TradeTariffPostgres${capitalize(${sls:stage})}"
     POSTGRES_HOST: ${env:POSTGRES_HOST}
-    POSTGRES_USER: ${env:POSTGRES_USER}
     POSTGRES_PASSWORD: ${env:POSTGRES_PASSWORD}
+    POSTGRES_USER: ${env:POSTGRES_USER}
+    S3_BUCKET: "trade-tariff-database-backups-${aws:accountId}"
 
   iamRoleStatements:
     - Effect: "Allow"
@@ -40,8 +35,8 @@ provider:
         - s3:ListBucket
         - s3:PutObject
       Resource:
-        - "arn:aws:s3:::${env:S3_BUCKET}"
-        - "arn:aws:s3:::${env:S3_BUCKET}/*"
+        - "arn:aws:s3:::trade-tariff-database-backups-${aws:accountId}"
+        - "arn:aws:s3:::trade-tariff-database-backups-${aws:accountId}/*"
 
     - Effect: "Allow"
       Action:
@@ -61,5 +56,14 @@ provider:
 functions:
   backup:
     image: database-backups
+    vpcDiscovery:
+      vpcName: "trade-tariff-${sls:stage}-vpc"
+      subnets:
+        - tagKey: "Name"
+          tagValues:
+            - "*private*"
+      securityGroups:
+        - names:
+            - "trade-tariff-be-rd-${sls:stage}"
     events:
       - schedule: cron(0 12 * * ? *) # Run every day at 1200 UTC

@@ -66,4 +66,4 @@ functions:
         - names:
             - "trade-tariff-be-rd-${sls:stage}"
     events:
-      - schedule: cron(0 12 * * ? *) # Run every day at 1200 UTC
+      - schedule: cron(0 9 * * ? *) # Run every day at 0900 UTC

@@ -36,10 +36,6 @@ ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest
 RUN chmod 755 /usr/bin/aws-lambda-rie
 
 ENV ENVIRONMENT ''
-ENV POSTGRES_DATABASE ''
-ENV POSTGRES_HOST ''
-ENV POSTGRES_PASSWORD ''
-ENV POSTGRES_USER ''
 ENV S3_BUCKET ''
 ENV S3_S3V4 no
 

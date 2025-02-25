@@ -5,6 +5,12 @@ plugins:
   - serverless-vpc-discovery
   - serverless-plugin-utils
 
+custom:
+  db-secret:
+    development: "tradetariffpostgresdevelopment-connection-string"
+    staging: "aurora-postgres-rw-connection-string"
+    production: "aurora-postgres-rw-connection-string"
+
 provider:
   name: aws
   region: eu-west-2
@@ -21,10 +27,6 @@ provider:
 
   environment:
     ENVIRONMENT: ${sls:stage}
-    POSTGRES_DATABASE: "TradeTariffPostgres${capitalize(${sls:stage})}"
-    POSTGRES_HOST: ${env:POSTGRES_HOST}
-    POSTGRES_PASSWORD: ${env:POSTGRES_PASSWORD}
-    POSTGRES_USER: ${env:POSTGRES_USER}
     S3_BUCKET: "trade-tariff-database-backups-${aws:accountId}"
 
   iamRoleStatements:
@@ -40,10 +42,25 @@ provider:
 
     - Effect: "Allow"
       Action:
-        - kms:Decrypt
-        - kms:GenerateDataKey
+        - secretsmanager:GetResourcePolicy
+        - secretsmanager:GetSecretValue
+        - secretsmanager:DescribeSecret
+        - secretsmanager:ListSecretVersionIds
       Resource:
-        - "arn:aws:kms:${self:provider.region}:${aws:accountId}:key/*"
+        - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:tradetariffpostgres${sls:stage}-connection-string-*"
+        - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:aurora-postgres-rw-connection-string-*"
+
+    - Effect: "Allow"
+      Action:
+        - kms:Encrypt
+        - kms:Decrypt
+        - kms:ReEncryptFrom
+        - kms:ReEncryptTo
+        - kms:GenerateDataKeyPair
+        - kms:GenerateDataKeyPairWithoutPlainText
+        - kms:GenerateDataKeyWithoutPlaintext
+      Resource:
+        - arn:aws:kms:eu-west-2:${aws:accountId}:key/*
 
     - Effect: "Allow"
       Action:
@@ -56,6 +73,8 @@ provider:
 functions:
   backup:
     image: database-backups
+    environment:
+      DATABASE_SECRET: ${self:custom.db-secret.${self:provider.stage}}
     vpcDiscovery:
       vpcName: "trade-tariff-${sls:stage}-vpc"
       subnets:
@@ -65,5 +84,6 @@ functions:
       securityGroups:
         - names:
             - "trade-tariff-be-rd-${sls:stage}"
+            - "trade-tariff-alb-security-group-${sls:stage}"
     events:
       - schedule: cron(0 9 * * ? *) # Run every day at 0900 UTC

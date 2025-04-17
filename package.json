@@ -1,5 +1,6 @@
 {
   "devDependencies": {
+    "serverless": "^3",
     "serverless-plugin-utils": "^0.2.0",
     "serverless-vpc-discovery": "^4.1.0"
   }

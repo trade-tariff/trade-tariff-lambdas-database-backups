@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 SECONDS=0
 
@@ -20,12 +20,12 @@ if [ -z "${DATABASE_SECRET}" ]; then
 fi
 
 DATABASE_URL=$(aws secretsmanager get-secret-value \
-  --secret-id $DATABASE_SECRET \
+  --secret-id "$DATABASE_SECRET" \
   --query SecretString \
   --output text
 )
 
-pg_dump $DATABASE_URL \
+pg_dump "$DATABASE_URL" \
   --no-acl            \
   --no-owner          \
   --clean             \

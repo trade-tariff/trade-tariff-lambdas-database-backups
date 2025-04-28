@@ -1,0 +1,77 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The git ref to deploy'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  AWS_REGION: eu-west-2
+  STAGE: development
+  IAM_ROLE_ARN: arn:aws:iam::844815912454:role/GithubActions-Serverless-Lambda-Role
+  ECR_URL: 382373577178.dkr.ecr.eu-west-2.amazonaws.com/tariff-database-backups-production
+
+jobs:
+    lint:
+      runs-on: ubuntu-latest
+
+      steps:
+        - uses: actions/checkout@v4
+
+        - uses: actions/setup-python@v5
+          with:
+            python-version: '3'
+
+        - run: python3 -m pip install --upgrade pip
+        - run: pip install pre-commit
+        - run: pre-commit run --all-files
+
+    build-and-push:
+      runs-on: ubuntu-latest
+
+      outputs:
+        docker-tag: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+
+      steps:
+        - uses: actions/checkout@v4
+
+        - id: docker-tag
+          run: |
+            echo "DOCKER_TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+        - uses: trade-tariff/trade-tariff-tools/.github/actions/build-and-push@main
+          with:
+            ecr-url: ${{ env.ECR_URL }}
+            ref: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+
+    deploy:
+      needs: build-and-push
+      runs-on: ubuntu-latest
+
+      steps:
+        - uses: actions/checkout@v4
+
+        - uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: ${{ env.IAM_ROLE_ARN }}
+            aws-region: ${{ env.AWS_REGION }}
+
+        - uses: actions/setup-node@v4
+          with:
+            node-version: 'lts/*'
+            cache: 'yarn'
+
+        - run: yarn install --frozen-lockfile
+
+        - run: DOCKER_TAG=${{ needs.build-and-push.outputs.docker-tag }} yarn run serverless deploy --verbose

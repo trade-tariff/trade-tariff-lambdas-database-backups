@@ -35,9 +35,9 @@ COPY --from=build-image ${FUNCTION_DIR} ${FUNCTION_DIR}
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie /usr/bin/aws-lambda-rie
 RUN chmod 755 /usr/bin/aws-lambda-rie
 
-ENV ENVIRONMENT ''
-ENV S3_BUCKET ''
-ENV S3_S3V4 no
+ENV ENVIRONMENT=''
+ENV S3_BUCKET=''
+ENV S3_S3V4=no
 
 RUN python3 -m pip install --no-cache-dir awscli==1.29.85
 

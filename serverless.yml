@@ -23,7 +23,7 @@ provider:
   ecr:
     images:
       database-backups:
-        uri: "${ssm:/${sls:stage}/DATABASE_BACKUPS_ECR_URL}:latest"
+        uri: "${env:ECR_URL}:${env:DOCKER_TAG}"
 
   environment:
     ENVIRONMENT: ${sls:stage}
@@ -87,4 +87,4 @@ functions:
             - "trade-tariff-be-rd-${sls:stage}"
             - "trade-tariff-alb-security-group-${sls:stage}"
     events:
-      - schedule: cron(0 9 * * ? *) # Run every day at 0900 UTC
+      - schedule: cron(0 9 * * ? *) # Run every day at 0900 UTC (BWT)

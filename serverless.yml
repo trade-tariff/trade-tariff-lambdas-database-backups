@@ -5,12 +5,6 @@ plugins:
   - serverless-vpc-discovery
   - serverless-plugin-utils
 
-custom:
-  db-secret:
-    development: "tradetariffpostgresdevelopment-connection-string"
-    staging: "aurora-postgres-rw-connection-string"
-    production: "aurora-postgres-rw-connection-string"
-
 provider:
   name: aws
   region: eu-west-2
@@ -47,7 +41,6 @@ provider:
         - secretsmanager:DescribeSecret
         - secretsmanager:ListSecretVersionIds
       Resource:
-        - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:tradetariffpostgres${sls:stage}-connection-string-*"
         - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:aurora-postgres-rw-connection-string-*"
 
     - Effect: "Allow"
@@ -75,7 +68,7 @@ functions:
   backup:
     image: database-backups
     environment:
-      DATABASE_SECRET: ${self:custom.db-secret.${self:provider.stage}}
+      DATABASE_SECRET: aurora-postgres-rw-connection-string
     vpcDiscovery:
       vpcName: "trade-tariff-${sls:stage}-vpc"
       subnets:

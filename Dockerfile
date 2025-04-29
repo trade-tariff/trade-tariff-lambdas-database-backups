@@ -4,6 +4,7 @@ ARG DISTRO_VERSION="3.16"
 
 FROM python:${RUNTIME_VERSION}-alpine${DISTRO_VERSION} AS python-alpine
 RUN apk add --no-cache \
+    bash               \
     curl               \
     libcurl            \
     libstdc++          \
@@ -11,6 +12,7 @@ RUN apk add --no-cache \
 
 FROM python-alpine AS build-image
 RUN apk add --no-cache \
+    bash               \
     autoconf           \
     automake           \
     build-base         \

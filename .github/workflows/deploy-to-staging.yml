@@ -5,39 +5,33 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'The git ref to deploy'
-        required: true
-        default: 'main'
 
 permissions:
   contents: read
-  id-token: write
+  id-token: read
 
 env:
   AWS_REGION: eu-west-2
-  STAGE: staging
   IAM_ROLE_ARN: arn:aws:iam::451934005581:role/GithubActions-Serverless-Lambda-Role
   ECR_URL: 382373577178.dkr.ecr.eu-west-2.amazonaws.com/tariff-database-backups-production
 
 jobs:
   build-and-push:
-      runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-      outputs:
-        docker-tag: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+    outputs:
+      docker-tag: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
 
-      steps:
-        - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-        - id: docker-tag
-          run: echo "DOCKER_TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - id: docker-tag
+        run: echo "DOCKER_TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-        - uses: trade-tariff/trade-tariff-tools/.github/actions/build-and-push@main
-          with:
-            ecr-url: ${{ env.ECR_URL }}
-            ref: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+      - uses: trade-tariff/trade-tariff-tools/.github/actions/build-and-push@main
+        with:
+          ecr-url: ${{ env.ECR_URL }}
+          ref: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
 
   deploy:
     needs: build-and-push
@@ -45,6 +39,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - id: docker-tag
+        run: echo "DOCKER_TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -58,4 +55,7 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
-      - run: DOCKER_TAG=${{ needs.build-and-push.outputs.docker-tag }} yarn run serverless deploy --verbose
+      - run: yarn run serverless deploy --verbose
+        env:
+          DOCKER_TAG: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+          STAGE: staging

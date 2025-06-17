@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-SECONDS=0
+STARTED=$(date +"%Y-%m-%d %H:%M:%S")
 
 set -eo
 
@@ -25,12 +25,20 @@ DATABASE_URL=$(aws secretsmanager get-secret-value \
   --output text
 )
 
+latest="s3://$S3_BUCKET/tariff-merged-${ENVIRONMENT}.sql.gz"
+today="s3://$S3_BUCKET/$(date +"%Y/%m/%d")/tariff-merged-${ENVIRONMENT}.sql.gz"
+
 pg_dump "$DATABASE_URL" \
   --no-acl            \
   --no-owner          \
   --clean             \
   --verbose |
   gzip |
-  aws s3 cp - "s3://$S3_BUCKET/tariff-merged-${ENVIRONMENT}.sql.gz" || exit 2
+  aws s3 cp - "$latest" || exit 2
+
+aws s3 cp "$latest" "$today" || exit 3
+
+ENDED=$(date +"%Y-%m-%d %H:%M:%S")
+SECONDS=$(( $(date -d "$ENDED" +%s) - $(date -d "$STARTED" +%s) ))
 
 echo "SQL backup uploaded successfully. Time: ${SECONDS}s" && exit 0

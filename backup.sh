@@ -25,8 +25,8 @@ DATABASE_URL=$(aws secretsmanager get-secret-value \
   --output text
 )
 
-latest="s3://$S3_BUCKET/tariff-merged-${ENVIRONMENT}.sql.gz" 
-today="s3://$S3_BUCKET/$(date +"%Y/%m/%d")/tariff-merged-${ENVIRONMENT}.sql.gz" 
+latest="s3://$S3_BUCKET/tariff-merged-${ENVIRONMENT}.sql.gz"
+today="s3://$S3_BUCKET/$(date +"%Y/%m/%d")/tariff-merged-${ENVIRONMENT}.sql.gz"
 
 pg_dump "$DATABASE_URL" \
   --no-acl            \

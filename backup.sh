@@ -36,7 +36,8 @@ today="s3://$S3_BUCKET/$(date +"%Y/%m/%d")/tariff-merged-${ENVIRONMENT}.sql.gz"
     --no-owner          \
     --clean             \
     --verbose | \
-    sed '/^REFRESH MATERIALIZED VIEW/d'
+    sed -e '/^REFRESH MATERIALIZED VIEW/d' \
+        -e 's/^SET client_min_messages = warning;$/SET client_min_messages = notice;/'
   cat after.sql
 } |
   gzip |

@@ -1,0 +1,10 @@
+.git/
+.github/
+.gitattributes
+.gitignore
+.hadolint.yaml
+.pre-commit-config.yaml
+Dockerfile
+LICENSE
+README.md
+serverless.yml

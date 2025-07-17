@@ -45,6 +45,7 @@ jobs:
         with:
           ecr-url: ${{ env.ECR_URL }}
           ref: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+          role-to-assume: ${{ env.IAM_ROLE_ARN }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:

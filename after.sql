@@ -123,14 +123,16 @@ BEGIN
         LOOP
             start_time := clock_timestamp();
             BEGIN
-                -- Set timeout for this refresh (60s)
+                -- Set timeouts for this refresh (60s); covers both execution and lock waits
                 PERFORM set_config('statement_timeout', '60s', true);
+                PERFORM set_config('lock_timeout', '60s', true);
 
                 -- Perform the refresh.
                 EXECUTE 'REFRESH MATERIALIZED VIEW ' || current_mv || ' WITH DATA';
 
-                -- Reset timeout after success
+                -- Reset timeouts after success
                 PERFORM set_config('statement_timeout', '0', true);
+                PERFORM set_config('lock_timeout', '0', true);
 
                 -- Get size after successful refresh
                 BEGIN
@@ -150,9 +152,10 @@ BEGIN
                 EXIT;  -- Success, exit retry loop
 
             EXCEPTION
-                WHEN query_canceled THEN  -- Timeout hit (SQLSTATE '57014')
-                    -- Reset timeout to avoid affecting sleep or logs
+                WHEN query_canceled OR lock_not_available THEN  -- Covers statement_timeout (57014) and lock_timeout (55P03)
+                    -- Reset timeouts to avoid affecting sleep or logs
                     PERFORM set_config('statement_timeout', '0', true);
+                    PERFORM set_config('lock_timeout', '0', true);
 
                     duration := clock_timestamp() - start_time;
                     formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
@@ -171,9 +174,10 @@ BEGIN
                         PERFORM pg_sleep(backoff_seconds);
                     END IF;
 
-                WHEN OTHERS THEN  -- Other errors (e.g., locks)
-                    -- Reset timeout
+                WHEN OTHERS THEN  -- Other errors (e.g., syntax)
+                    -- Reset timeouts
                     PERFORM set_config('statement_timeout', '0', true);
+                    PERFORM set_config('lock_timeout', '0', true);
 
                     duration := clock_timestamp() - start_time;
                     formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';

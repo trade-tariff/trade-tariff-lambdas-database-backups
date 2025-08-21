@@ -3,6 +3,9 @@
 -- by parsing the view definitions to find references to other materialized views.
 -- Dependencies are detected through text analysis of the view definition SQL.
 -- If a refresh fails (e.g., due to locks or errors), it logs a notice and continues.
+-- If a refresh exceeds a timeout (60s) we will backoff retry (up to 3 times)
+
+VACUUM FULL ANALYZE;
 
 DO $$
 DECLARE
@@ -18,7 +21,17 @@ DECLARE
     success_count integer := 0;
     failure_count integer := 0;
     failed_views text[] := '{}';
-    view_sizes text;
+    before_bytes bigint;
+    after_bytes bigint;
+    total_elapsed numeric;
+
+    -- Retry variables
+    max_retries integer := 3;
+    retry_count integer;
+    backoff_seconds integer;
+
+    -- For summary table row
+    rec record;
 BEGIN
     -- Optimize memory for materialized view operations
     PERFORM set_config('maintenance_work_mem', '2GB', true);
@@ -29,6 +42,16 @@ BEGIN
         mv_name text,
         depth integer,
         row_num integer
+    ) ON COMMIT DROP;
+
+    -- Create temp table for refresh summary
+    CREATE TEMP TABLE refresh_summary (
+        mv_name text,
+        retries integer,
+        before_bytes bigint,
+        after_bytes bigint,
+        elapsed_seconds numeric,
+        status text
     ) ON COMMIT DROP;
 
     -- Build dependency information by parsing materialized view definitions
@@ -100,44 +123,102 @@ BEGIN
     FOR current_mv, current_view_num IN
         SELECT mv_name, row_num FROM ordered_mvs ORDER BY row_num
     LOOP
-        start_time := clock_timestamp();
-
-        -- Get estimated size info for context
+        -- Get estimated size info before refresh
         BEGIN
-            SELECT pg_size_pretty(pg_total_relation_size(current_mv::regclass))
-            INTO view_sizes;
+            SELECT pg_total_relation_size(current_mv::regclass)
+            INTO before_bytes;
         EXCEPTION WHEN others THEN
-            view_sizes := 'unknown size';
+            before_bytes := NULL;
         END;
 
         RAISE NOTICE '[%/%] Starting refresh of % (%) at %',
-            current_view_num, total_views, current_mv, view_sizes,
-            to_char(start_time, 'HH24:MI:SS');
+            current_view_num, total_views, current_mv, COALESCE(pg_size_pretty(before_bytes), 'unknown size'),
+            to_char(clock_timestamp(), 'HH24:MI:SS');
 
-        BEGIN
-            -- Perform the refresh. Add 'CONCURRENTLY' if your views have qualifying UNIQUE indexes
-            -- (uncomment and test; it allows reads during refresh but requires the view to be populated).
-            -- EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY ' || current_mv || ' WITH DATA';
-            EXECUTE 'REFRESH MATERIALIZED VIEW ' || current_mv || ' WITH DATA';
+        retry_count := 0;
+        total_elapsed := 0;
+        after_bytes := NULL;  -- Initialize to NULL for failures
+        LOOP
+            start_time := clock_timestamp();
+            BEGIN
+                -- Set timeouts for this refresh (60s); covers both execution and lock waits
+                PERFORM set_config('statement_timeout', '60s', true);
+                PERFORM set_config('lock_timeout', '60s', true);
 
-            duration := clock_timestamp() - start_time;
-            formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
-            success_count := success_count + 1;
+                -- Perform the refresh.
+                EXECUTE 'REFRESH MATERIALIZED VIEW ' || current_mv || ' WITH DATA';
 
-            RAISE NOTICE '[%/%] ✓ Completed % in %',
-                current_view_num, total_views, current_mv, formatted_duration;
+                -- Reset timeouts after success
+                PERFORM set_config('statement_timeout', '0', true);
+                PERFORM set_config('lock_timeout', '0', true);
 
-        EXCEPTION WHEN OTHERS THEN
-            -- If refresh fails, log the error via NOTICE and continue to the next view.
-            duration := clock_timestamp() - start_time;
-            formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
-            failure_count := failure_count + 1;
-            failed_views := array_append(failed_views, current_mv);
+                -- Get size after successful refresh
+                BEGIN
+                    SELECT pg_total_relation_size(current_mv::regclass)
+                    INTO after_bytes;
+                EXCEPTION WHEN others THEN
+                    after_bytes := NULL;
+                END;
 
-            RAISE NOTICE '[%/%] ✗ Failed %: % (in %)',
-                current_view_num, total_views, current_mv, SQLERRM, formatted_duration;
-            -- Note: No re-raise, so the loop continues.
-        END;
+                duration := clock_timestamp() - start_time;
+                total_elapsed := total_elapsed + extract(epoch FROM duration);
+                formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
+                success_count := success_count + 1;
+
+                RAISE NOTICE '[%/%] ✓ Completed % (size: % → %) in %',
+                    current_view_num, total_views, current_mv,
+                    COALESCE(pg_size_pretty(before_bytes), 'unknown'),
+                    COALESCE(pg_size_pretty(after_bytes), 'unknown'),
+                    formatted_duration;
+
+                EXIT;  -- Success, exit retry loop
+
+            EXCEPTION
+                WHEN query_canceled OR lock_not_available THEN  -- Covers statement_timeout (57014) and lock_timeout (55P03)
+                    -- Reset timeouts to avoid affecting sleep or logs
+                    PERFORM set_config('statement_timeout', '0', true);
+                    PERFORM set_config('lock_timeout', '0', true);
+
+                    duration := clock_timestamp() - start_time;
+                    total_elapsed := total_elapsed + extract(epoch FROM duration);
+                    formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
+
+                    retry_count := retry_count + 1;
+                    IF retry_count >= max_retries THEN
+                        failure_count := failure_count + 1;
+                        failed_views := array_append(failed_views, current_mv);
+                        RAISE NOTICE '[%/%] ✗ Failed % after % retries: Timeout after %',
+                            current_view_num, total_views, current_mv, max_retries, formatted_duration;
+                        EXIT;  -- Max retries reached, move to next view
+                    ELSE
+                        backoff_seconds := 10 * (2 ^ (retry_count - 1));  -- Exponential: 10s, 20s, 40s...
+                        RAISE NOTICE '[%/%] Timeout on % (attempt %/% after %); backing off %s and retrying',
+                            current_view_num, total_views, current_mv, retry_count, max_retries, formatted_duration, backoff_seconds;
+                        PERFORM pg_sleep(backoff_seconds);
+                    END IF;
+
+                WHEN OTHERS THEN  -- Other errors (e.g., syntax)
+                    -- Reset timeouts
+                    PERFORM set_config('statement_timeout', '0', true);
+                    PERFORM set_config('lock_timeout', '0', true);
+
+                    duration := clock_timestamp() - start_time;
+                    total_elapsed := total_elapsed + extract(epoch FROM duration);
+                    formatted_duration := round(extract(epoch FROM duration)::numeric, 3)::text || ' seconds';
+                    failure_count := failure_count + 1;
+                    failed_views := array_append(failed_views, current_mv);
+
+                    RAISE NOTICE '[%/%] ✗ Failed %: % (in %)',
+                        current_view_num, total_views, current_mv, SQLERRM, formatted_duration;
+                    EXIT;  -- Non-timeout error, no retry, move to next
+            END;
+        END LOOP;
+
+        -- Log to summary table after each view
+        INSERT INTO refresh_summary (mv_name, retries, before_bytes, after_bytes, elapsed_seconds, status)
+        VALUES (current_mv, retry_count, before_bytes, after_bytes, total_elapsed,
+                CASE WHEN after_bytes IS NOT NULL THEN 'Success' ELSE 'Failure' END);
+
     END LOOP;
 
     -- Final summary with comprehensive statistics
@@ -194,4 +275,45 @@ BEGIN
     END LOOP;
 
     RAISE NOTICE '===============================================';
+
+    -- Summary table: All retried/failed + top 10 largest by after size
+    RAISE NOTICE '';
+    RAISE NOTICE '====== REFRESH SUMMARY TABLE (Top 10 largest + all retried/failed) ======';
+    RAISE NOTICE 'MV Name                  | Retries | Before Size | After Size | Elapsed Time | Status';
+    RAISE NOTICE '-------------------------|---------|-------------|------------|--------------|--------';
+
+    FOR rec IN
+        WITH ranked AS (
+            SELECT rs.*,
+                   ROW_NUMBER() OVER (ORDER BY rs.after_bytes DESC NULLS LAST) AS rn
+            FROM refresh_summary rs
+            WHERE rs.status = 'Success'
+        ),
+        selected AS (
+            SELECT rs2.mv_name, rs2.retries, rs2.before_bytes, rs2.after_bytes, rs2.elapsed_seconds, rs2.status
+            FROM refresh_summary rs2
+            WHERE rs2.retries > 0 OR rs2.status = 'Failure'
+            UNION
+            SELECT r.mv_name, r.retries, r.before_bytes, r.after_bytes, r.elapsed_seconds, r.status
+            FROM ranked r
+            WHERE r.rn <= 10
+        )
+        SELECT s.mv_name, s.retries,
+               COALESCE(pg_size_pretty(s.before_bytes), 'unknown') AS before_size,
+               COALESCE(pg_size_pretty(s.after_bytes), 'N/A') AS after_size,
+               round(s.elapsed_seconds::numeric, 3)::text || 's' AS elapsed_time,
+               s.status
+        FROM selected s
+        ORDER BY COALESCE(s.after_bytes, 0) DESC
+    LOOP
+        RAISE NOTICE '% | % | % | % | % | %',
+            rpad(rec.mv_name, 24),
+            lpad(rec.retries::text, 7),
+            rpad(rec.before_size, 11),
+            rpad(rec.after_size, 10),
+            rpad(rec.elapsed_time, 12),
+            rec.status;
+    END LOOP;
+
+    RAISE NOTICE '==================================================================================';
 END $$;

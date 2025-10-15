@@ -67,5 +67,6 @@ jobs:
 
       - run: yarn run serverless deploy --verbose
         env:
+          DATABASE_SECRET: aurora-postgres-rw-connection-string
           DOCKER_TAG: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
           STAGE: development

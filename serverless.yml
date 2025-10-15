@@ -68,7 +68,7 @@ functions:
   backup:
     image: database-backups
     environment:
-      DATABASE_SECRET: aurora-postgres-rw-connection-string
+      DATABASE_SECRET: ${env:DATABASE_SECRET}
     vpcDiscovery:
       vpcName: "trade-tariff-${sls:stage}-vpc"
       subnets:

@@ -43,6 +43,7 @@ provider:
       Resource:
         - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:aurora-postgres-rw-connection-string-*"
         - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:*-postgres-database-url-*"
+        - "arn:aws:secretsmanager:eu-west-2:${aws:accountId}:secret:*-postgres-*-database-url-*"
 
     - Effect: "Allow"
       Action:

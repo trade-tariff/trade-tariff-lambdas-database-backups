@@ -65,6 +65,6 @@ jobs:
 
       - run: yarn run serverless deploy --verbose
         env:
-          DATABASE_SECRET: production-postgres-database-url
+          DATABASE_SECRET: production-postgres-17-5-database-url
           DOCKER_TAG: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
           STAGE: production

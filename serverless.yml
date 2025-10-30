@@ -83,3 +83,17 @@ functions:
             - "trade-tariff-alb-security-group-${sls:stage}"
     events:
       - schedule: cron(0 9 * * ? *) # Run every day at 0900 UTC (BWT)
+
+custom:
+  logRetentionInDays:
+    development: 7
+    staging: 14
+    production: 30
+
+resources:
+  Resources:
+    BackupLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-${sls:stage}-backup
+        RetentionInDays: ${self:custom.logRetentionInDays.${sls:stage}, 14}

@@ -56,8 +56,8 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
-      - run: yarn run serverless deploy --verbose
+      - run: yarn run serverless remove --verbose
         env:
           DATABASE_SECRET: aurora-postgres-rw-connection-string
-          DOCKER_TAG: ${{ steps.docker-tag.outputs.DOCKER_TAG }}
+          DOCKER_TAG: latest
           STAGE: staging

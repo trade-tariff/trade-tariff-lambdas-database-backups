@@ -67,4 +67,4 @@ jobs:
         env:
           DATABASE_SECRET: aurora-postgres-rw-connection-string
           DOCKER_TAG: latest
-          STAGE: staging
+          STAGE: production
